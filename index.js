@@ -1,96 +1,135 @@
-// console.log(window.innerHeight);
-// console.log(window.innerWidth);
+console.log(window.innerHeight);
+console.log(window.innerWidth);
 
-export default function potpack(boxes) {
-  // calculate total box area and maximum box width
-  let area = 0;
-  let maxWidth = 0;
+const randomColor = Math.floor(Math.random() * 16777215).toString(16);
 
-  for (const box of boxes) {
-    area += box.w * box.h;
-    maxWidth = Math.max(maxWidth, box.w);
-  }
+function potpack(rectangles, containerWidth, containerHeight) {
+  rectangles.sort((a, b) => b.h - a.h);
 
-  // sort the boxes for insertion by height, descending
-  boxes.sort((a, b) => b.h - a.h);
-
-  // aim for a squarish resulting container,
-  // slightly adjusted for sub-100% space utilization
-  const startWidth = Math.max(Math.ceil(Math.sqrt(area / 0.95)), maxWidth);
-
-  // start with a single empty space, unbounded at the bottom
-  const spaces = [{ x: 0, y: 0, w: startWidth, h: Infinity }];
+  const spaces = [{ x: 0, y: 0, w: containerWidth, h: containerHeight }];
+  const placements = [];
 
   let width = 0;
   let height = 0;
 
-  for (const box of boxes) {
-    // look through spaces backwards so that we check smaller spaces first
+  for (const rectangle of rectangles) {
+    let placed = false;
+
     for (let i = spaces.length - 1; i >= 0; i--) {
       const space = spaces[i];
 
-      // look for empty spaces that can accommodate the current box
-      if (box.w > space.w || box.h > space.h) continue;
+      if (
+        (rectangle.w > space.w || rectangle.h > space.h) &&
+        (rectangle.h > space.w || rectangle.w > space.h)
+      )
+        continue;
 
-      // found the space; add the box to its top-left corner
-      // |-------|-------|
-      // |  box  |       |
-      // |_______|       |
-      // |         space |
-      // |_______________|
-      box.x = space.x;
-      box.y = space.y;
+      if (
+        space.x + rectangle.w > containerWidth ||
+        space.y + rectangle.h > containerHeight
+      ) {
+        // Skip if the rectangle exceeds the container boundaries
+        continue;
+      }
 
-      height = Math.max(height, box.y + box.h);
-      width = Math.max(width, box.x + box.w);
+      if (rectangle.w <= space.w && rectangle.h <= space.h) {
+        rectangle.left = space.x;
+        rectangle.top = space.y;
+        rectangle.right = space.x + rectangle.w;
+        rectangle.bottom = space.y + rectangle.h;
+      } else if (rectangle.h <= space.w && rectangle.w <= space.h) {
+        rectangle.left = space.x;
+        rectangle.top = space.y;
+        rectangle.right = space.x + rectangle.h;
+        rectangle.bottom = space.y + rectangle.w;
+        [rectangle.w, rectangle.h] = [rectangle.h, rectangle.w];
+      } else if (rectangle.w <= space.h && rectangle.h <= space.w) {
+        rectangle.left = space.x;
+        rectangle.top = space.y;
+        rectangle.right = space.x + rectangle.h;
+        rectangle.bottom = space.y + rectangle.w;
+        [rectangle.w, rectangle.h] = [rectangle.h, rectangle.w];
+      } else {
+        // Skip if the rectangle cannot fit in the space
+        continue;
+      }
 
-      if (box.w === space.w && box.h === space.h) {
-        // space matches the box exactly; remove it
+      width = Math.max(width, rectangle.right);
+      height = Math.max(height, rectangle.bottom);
+
+      if (rectangle.w === space.w && rectangle.h === space.h) {
         const last = spaces.pop();
         if (i < spaces.length) spaces[i] = last;
-      } else if (box.h === space.h) {
-        // space matches the box height; update it accordingly
-        // |-------|---------------|
-        // |  box  | updated space |
-        // |_______|_______________|
-        space.x += box.w;
-        space.w -= box.w;
-      } else if (box.w === space.w) {
-        // space matches the box width; update it accordingly
-        // |---------------|
-        // |      box      |
-        // |_______________|
-        // | updated space |
-        // |_______________|
-        space.y += box.h;
-        space.h -= box.h;
+      } else if (rectangle.h === space.h) {
+        space.x += rectangle.w;
+        space.w -= rectangle.w;
+      } else if (rectangle.w === space.w) {
+        space.y += rectangle.h;
+        space.h -= rectangle.h;
       } else {
-        // otherwise the box splits the space into two spaces
-        // |-------|-----------|
-        // |  box  | new space |
-        // |_______|___________|
-        // | updated space     |
-        // |___________________|
-        spaces.push({
-          x: space.x + box.w,
-          y: space.y,
-          w: space.w - box.w,
-          h: box.h,
-        });
-        space.y += box.h;
-        space.h -= box.h;
+        if (rectangle.h <= space.h) {
+          spaces.push({
+            x: space.x + rectangle.w,
+            y: space.y,
+            w: space.w - rectangle.w,
+            h: rectangle.h,
+          });
+          space.y += rectangle.h;
+          space.h -= rectangle.h;
+        } else {
+          spaces.push({
+            x: space.x,
+            y: space.y + space.h,
+            w: rectangle.w,
+            h: space.h,
+          });
+          space.w -= rectangle.w;
+          space.h = rectangle.h;
+        }
       }
+
+      placements.push({
+        top: rectangle.top,
+        bottom: rectangle.bottom,
+        left: rectangle.left,
+        right: rectangle.right,
+      });
+
+      placed = true;
       break;
+    }
+
+    if (!placed) {
+      // Handle case when a rectangle cannot be placed within the container
+      if (containerWidth < rectangle.w) {
+        // Place the rectangle below the container
+        rectangle.left = 0;
+        rectangle.top = containerHeight;
+        rectangle.right = rectangle.w;
+        rectangle.bottom = containerHeight + rectangle.h;
+        width = Math.max(width, rectangle.right);
+        height = Math.max(height, rectangle.bottom);
+        placements.push({
+          top: rectangle.top,
+          bottom: rectangle.bottom,
+          left: rectangle.left,
+          right: rectangle.right,
+        });
+        placed = true;
+      } else {
+        console.log(
+          `Cannot place rectangle with width ${rectangle.w} and height ${rectangle.h}`
+        );
+      }
     }
   }
 
   return {
-    w: width, // container width
-    h: height, // container height
-    fill: area / (width * height) || 0, // space utilization
+    w: Math.min(width, containerWidth),
+    h: Math.min(height, containerHeight),
+    placements: placements,
   };
 }
-
 const rectangles = [
   {
     w: 140,
@@ -108,8 +147,53 @@ const rectangles = [
     w: 78,
     h: 103,
   },
+  {
+    w: 78,
+    h: 103,
+  },
+
+  {
+    w: 78,
+    h: 103,
+  },
+
+  {
+    w: 78,
+    h: 103,
+  },
+
+  {
+    w: 78,
+    h: 103,
+  },
+
+  {
+    w: 78,
+    h: 103,
+  },
 ];
 
-const result = potpack(rectangles);
+const result = potpack(rectangles, window.innerWidth, window.innerHeight);
 
 console.log(result);
+
+const container = document.body;
+
+// Встановити розміри контейнера відповідно до результату
+
+// Відобразити розміщення блоків
+result.placements.forEach((placement, index) => {
+  const boxElement = document.createElement("div");
+  boxElement.className = "box";
+  boxElement.style.position = "absolute";
+  boxElement.style.width = `${placement.right - placement.left}px`;
+  boxElement.style.height = `${placement.bottom - placement.top}px`;
+  boxElement.style.top = `${placement.top}px`;
+  boxElement.style.left = `${placement.left}px`;
+  boxElement.style.backgroundColor = `#${Math.floor(
+    Math.random() * 16777215
+  ).toString(16)}`;
+  // Додати інші стилі або вміст за потреби
+
+  container.appendChild(boxElement);
+});
