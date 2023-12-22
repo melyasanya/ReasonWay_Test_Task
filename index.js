@@ -1,7 +1,4 @@
-console.log(window.innerHeight);
-console.log(window.innerWidth);
-
-const randomColor = Math.floor(Math.random() * 16777215).toString(16);
+import rectangles from "./rectangles.json" assert { type: "json" };
 
 function potpack(rectangles, containerWidth, containerHeight) {
   rectangles.sort((a, b) => b.h - a.h);
@@ -11,12 +8,15 @@ function potpack(rectangles, containerWidth, containerHeight) {
 
   let width = 0;
   let height = 0;
+  let totalArea = 0;
+  let emptyArea = 0;
 
-  for (const rectangle of rectangles) {
+  for (let i = 0; i < rectangles.length; i++) {
+    const rectangle = rectangles[i];
     let placed = false;
 
-    for (let i = spaces.length - 1; i >= 0; i--) {
-      const space = spaces[i];
+    for (let j = spaces.length - 1; j >= 0; j--) {
+      const space = spaces[j];
 
       if (
         (rectangle.w > space.w || rectangle.h > space.h) &&
@@ -28,8 +28,18 @@ function potpack(rectangles, containerWidth, containerHeight) {
         space.x + rectangle.w > containerWidth ||
         space.y + rectangle.h > containerHeight
       ) {
-        // Skip if the rectangle exceeds the container boundaries
-        continue;
+        // Try rotating the rectangle by 90 degrees
+        if (
+          rectangle.h <= space.w &&
+          rectangle.w <= space.h &&
+          rectangle.w <= containerWidth &&
+          rectangle.h <= containerHeight
+        ) {
+          [rectangle.w, rectangle.h] = [rectangle.h, rectangle.w];
+        } else {
+          // Skip if the rectangle cannot fit in the space
+          continue;
+        }
       }
 
       if (rectangle.w <= space.w && rectangle.h <= space.h) {
@@ -59,7 +69,7 @@ function potpack(rectangles, containerWidth, containerHeight) {
 
       if (rectangle.w === space.w && rectangle.h === space.h) {
         const last = spaces.pop();
-        if (i < spaces.length) spaces[i] = last;
+        if (j < spaces.length) spaces[j] = last;
       } else if (rectangle.h === space.h) {
         space.x += rectangle.w;
         space.w -= rectangle.w;
@@ -93,6 +103,7 @@ function potpack(rectangles, containerWidth, containerHeight) {
         bottom: rectangle.bottom,
         left: rectangle.left,
         right: rectangle.right,
+        index: i,
       });
 
       placed = true;
@@ -101,7 +112,7 @@ function potpack(rectangles, containerWidth, containerHeight) {
 
     if (!placed) {
       // Handle case when a rectangle cannot be placed within the container
-      if (containerWidth < rectangle.w) {
+      if (containerWidth < rectangle.w || containerHeight < rectangle.h) {
         // Place the rectangle below the container
         rectangle.left = 0;
         rectangle.top = containerHeight;
@@ -114,75 +125,137 @@ function potpack(rectangles, containerWidth, containerHeight) {
           bottom: rectangle.bottom,
           left: rectangle.left,
           right: rectangle.right,
+          index: i,
         });
         placed = true;
       } else {
-        console.log(
-          `Cannot place rectangle with width ${rectangle.w} and height ${rectangle.h}`
-        );
+        // Find the smallest space that can fit the rectangle
+        let smallestSpace = null;
+        let smallestDistance = Infinity;
+        for (let j = spaces.length - 1; j >= 0; j--) {
+          const space = spaces[j];
+          if (rectangle.w <= space.w && rectangle.h <= space.h) {
+            const distance =
+              Math.abs(space.x - rectangle.w) + Math.abs(space.y - rectangle.h);
+            if (distance < smallestDistance) {
+              smallestSpace = space;
+              smallestDistance = distance;
+            }
+          }
+        }
+
+        if (smallestSpace) {
+          rectangle.left = smallestSpace.x;
+          rectangle.top = smallestSpace.y;
+          rectangle.right = smallestSpace.x + rectangle.w;
+          rectangle.bottom = smallestSpace.y + rectangle.h;
+
+          width = Math.max(width, rectangle.right);
+          height = Math.max(height, rectangle.bottom);
+
+          if (
+            rectangle.w === smallestSpace.w &&
+            rectangle.h === smallestSpace.h
+          ) {
+            const last = spaces.pop();
+            if (j < spaces.length) spaces[j] = last;
+          } else if (rectangle.h === smallestSpace.h) {
+            smallestSpace.x += rectangle.w;
+            smallestSpace.w -= rectangle.w;
+          } else if (rectangle.w === smallestSpace.w) {
+            smallestSpace.y += rectangle.h;
+            smallestSpace.h -= rectangle.h;
+          } else {
+            if (rectangle.h <= smallestSpace.h) {
+              spaces.push({
+                x: smallestSpace.x + rectangle.w,
+                y: smallestSpace.y,
+                w: smallestSpace.w - rectangle.w,
+                h: rectangle.h,
+              });
+              smallestSpace.y += rectangle.h;
+              smallestSpace.h -= rectangle.h;
+            } else {
+              spaces.push({
+                x: smallestSpace.x,
+                y: smallestSpace.y + smallestSpace.h,
+                w: rectangle.w,
+                h: smallestSpace.h,
+              });
+              smallestSpace.w -= rectangle.w;
+              smallestSpace.h = rectangle.h;
+            }
+          }
+
+          placements.push({
+            top: rectangle.top,
+            bottom: rectangle.bottom,
+            left: rectangle.left,
+            right: rectangle.right,
+            index: i,
+          });
+
+          placed = true;
+        } else {
+          console.log(
+            `Cannot place rectangle with width ${rectangle.w} and height ${rectangle.h}`
+          );
+        }
       }
     }
   }
 
+  // Calculate the total area of all rectangles
+  for (let i = 0; i < rectangles.length; i++) {
+    const rectangle = rectangles[i];
+    totalArea += rectangle.w * rectangle.h;
+  }
+
+  // Calculate the empty area between rectangles
+  for (let i = 0; i < placements.length - 1; i++) {
+    const current = placements[i];
+    const next = placements[i + 1];
+
+    // Calculate the horizontal space between rectangles
+    const horizontalSpace = next.left - current.right;
+
+    if (horizontalSpace > 0) {
+      // Calculate the vertical space between rectangles
+      const verticalSpace =
+        Math.min(current.bottom, next.bottom) - Math.max(current.top, next.top);
+
+      // Only add the area if there is vertical space between rectangles
+      if (verticalSpace > 0) {
+        emptyArea += horizontalSpace * verticalSpace;
+      }
+    }
+  }
+
+  // Calculate the fullness coefficient
+  const fullness = 1 - emptyArea / (totalArea + emptyArea);
+
   return {
-    w: Math.min(width, containerWidth),
-    h: Math.min(height, containerHeight),
-    placements: placements,
+    placements,
+    fullness,
   };
 }
-const rectangles = [
-  {
-    w: 140,
-    h: 200,
-  },
-  {
-    w: 200,
-    h: 140,
-  },
-  {
-    w: 93,
-    h: 56,
-  },
-  {
-    w: 78,
-    h: 103,
-  },
-  {
-    w: 78,
-    h: 103,
-  },
-
-  {
-    w: 78,
-    h: 103,
-  },
-
-  {
-    w: 78,
-    h: 103,
-  },
-
-  {
-    w: 78,
-    h: 103,
-  },
-
-  {
-    w: 78,
-    h: 103,
-  },
-];
 
 const result = potpack(rectangles, window.innerWidth, window.innerHeight);
 
-console.log(result);
+const body = document.body;
 
-const container = document.body;
+const fullness = document.createElement("div");
+fullness.innerHTML = `Fullness: ${result.fullness * 100}%`;
+body.appendChild(fullness);
 
-// Встановити розміри контейнера відповідно до результату
+const container = document.createElement("div");
+container.style.position = "relative";
+body.appendChild(container);
 
 // Відобразити розміщення блоків
-result.placements.forEach((placement, index) => {
+const colorMap = {};
+
+result.placements.forEach((placement) => {
   const boxElement = document.createElement("div");
   boxElement.className = "box";
   boxElement.style.position = "absolute";
@@ -190,10 +263,25 @@ result.placements.forEach((placement, index) => {
   boxElement.style.height = `${placement.bottom - placement.top}px`;
   boxElement.style.top = `${placement.top}px`;
   boxElement.style.left = `${placement.left}px`;
-  boxElement.style.backgroundColor = `#${Math.floor(
-    Math.random() * 16777215
-  ).toString(16)}`;
-  // Додати інші стилі або вміст за потреби
+
+  const width = placement.right - placement.left;
+  const height = placement.bottom - placement.top;
+
+  let randomColor;
+  if (colorMap[`${width}-${height}`]) {
+    randomColor = colorMap[`${width}-${height}`];
+  } else {
+    randomColor = `rgb(${Math.floor(Math.random() * 256)}, ${Math.floor(
+      Math.random() * 256
+    )}, ${Math.floor(Math.random() * 256)})`;
+    colorMap[`${width}-${height}`] = randomColor;
+  }
+
+  boxElement.style.backgroundColor = randomColor;
+  boxElement.style.display = "flex";
+  boxElement.style.justifyContent = "center";
+  boxElement.style.alignItems = "center";
+  boxElement.innerHTML = placement.index;
 
   container.appendChild(boxElement);
 });
