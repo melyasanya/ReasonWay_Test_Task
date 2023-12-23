@@ -1,5 +1,14 @@
 import rectangles from "./rectangles.json" assert { type: "json" };
 
+/**
+ * Розміщення прямокутних блоків в прямокутному контейнері.
+ *
+ * @param {Array} rectangles - Масив прямокутників, які треба розмістити, які знаходяться в окремому JSON файлі.
+ * @param {number} containerWidth - Ширина контейнера, ширина viewport.
+ * @param {number} containerHeight - Висота контейнера, висота viewport.
+ * @returns {Object} - Об'єкт, який складається з масиву з координатами розміщення прямокутників та з коефіцієнту корисного простору.
+ */
+
 function potpack(rectangles, containerWidth, containerHeight) {
   rectangles.sort((a, b) => b.h - a.h);
 
@@ -18,17 +27,18 @@ function potpack(rectangles, containerWidth, containerHeight) {
     for (let j = spaces.length - 1; j >= 0; j--) {
       const space = spaces[j];
 
+      // Перевірка, чи може прямокутник поміститися в поточний простір
       if (
         (rectangle.w > space.w || rectangle.h > space.h) &&
         (rectangle.h > space.w || rectangle.w > space.h)
       )
         continue;
 
+      // Перевірка, чи не виходить прямокутник за межі контейнера
       if (
         space.x + rectangle.w > containerWidth ||
         space.y + rectangle.h > containerHeight
       ) {
-        // Try rotating the rectangle by 90 degrees
         if (
           rectangle.h <= space.w &&
           rectangle.w <= space.h &&
@@ -37,11 +47,11 @@ function potpack(rectangles, containerWidth, containerHeight) {
         ) {
           [rectangle.w, rectangle.h] = [rectangle.h, rectangle.w];
         } else {
-          // Skip if the rectangle cannot fit in the space
           continue;
         }
       }
 
+      // Розміщення прямокутника
       if (rectangle.w <= space.w && rectangle.h <= space.h) {
         rectangle.left = space.x;
         rectangle.top = space.y;
@@ -60,13 +70,10 @@ function potpack(rectangles, containerWidth, containerHeight) {
         rectangle.bottom = space.y + rectangle.w;
         [rectangle.w, rectangle.h] = [rectangle.h, rectangle.w];
       } else {
-        // Skip if the rectangle cannot fit in the space
         continue;
       }
 
-      width = Math.max(width, rectangle.right);
-      height = Math.max(height, rectangle.bottom);
-
+      // Видалення вільного простору, якщо прямокутник підходить ідеально
       if (rectangle.w === space.w && rectangle.h === space.h) {
         const last = spaces.pop();
         if (j < spaces.length) spaces[j] = last;
@@ -98,22 +105,22 @@ function potpack(rectangles, containerWidth, containerHeight) {
         }
       }
 
+      // Додавання прямокутника в масив розміщення
       placements.push({
         top: rectangle.top,
         bottom: rectangle.bottom,
         left: rectangle.left,
         right: rectangle.right,
-        index: i,
+        initialOrder: i,
       });
 
       placed = true;
       break;
     }
 
+    // Якщо прямокутник розташувати не вдалося, обробка кожного кейсу
     if (!placed) {
-      // Handle case when a rectangle cannot be placed within the container
       if (containerWidth < rectangle.w || containerHeight < rectangle.h) {
-        // Place the rectangle below the container
         rectangle.left = 0;
         rectangle.top = containerHeight;
         rectangle.right = rectangle.w;
@@ -125,11 +132,10 @@ function potpack(rectangles, containerWidth, containerHeight) {
           bottom: rectangle.bottom,
           left: rectangle.left,
           right: rectangle.right,
-          index: i,
+          initialOrder: i,
         });
         placed = true;
       } else {
-        // Find the smallest space that can fit the rectangle
         let smallestSpace = null;
         let smallestDistance = Infinity;
         for (let j = spaces.length - 1; j >= 0; j--) {
@@ -192,7 +198,7 @@ function potpack(rectangles, containerWidth, containerHeight) {
             bottom: rectangle.bottom,
             left: rectangle.left,
             right: rectangle.right,
-            index: i,
+            initialOrder: i,
           });
 
           placed = true;
@@ -205,33 +211,29 @@ function potpack(rectangles, containerWidth, containerHeight) {
     }
   }
 
-  // Calculate the total area of all rectangles
+  // Розрахунок площі прямокутників
   for (let i = 0; i < rectangles.length; i++) {
     const rectangle = rectangles[i];
     totalArea += rectangle.w * rectangle.h;
   }
 
-  // Calculate the empty area between rectangles
+  // Розрахунок площі порожнього простору
   for (let i = 0; i < placements.length - 1; i++) {
     const current = placements[i];
     const next = placements[i + 1];
 
-    // Calculate the horizontal space between rectangles
     const horizontalSpace = next.left - current.right;
 
     if (horizontalSpace > 0) {
-      // Calculate the vertical space between rectangles
       const verticalSpace =
         Math.min(current.bottom, next.bottom) - Math.max(current.top, next.top);
 
-      // Only add the area if there is vertical space between rectangles
       if (verticalSpace > 0) {
         emptyArea += horizontalSpace * verticalSpace;
       }
     }
   }
 
-  // Calculate the fullness coefficient
   const fullness = 1 - emptyArea / (totalArea + emptyArea);
 
   return {
@@ -252,20 +254,19 @@ const container = document.createElement("div");
 container.style.position = "relative";
 body.appendChild(container);
 
-// Відобразити розміщення блоків
 const colorMap = {};
 
 result.placements.forEach((placement) => {
   const boxElement = document.createElement("div");
   boxElement.className = "box";
-  boxElement.style.position = "absolute";
-  boxElement.style.width = `${placement.right - placement.left}px`;
-  boxElement.style.height = `${placement.bottom - placement.top}px`;
-  boxElement.style.top = `${placement.top}px`;
-  boxElement.style.left = `${placement.left}px`;
 
   const width = placement.right - placement.left;
   const height = placement.bottom - placement.top;
+
+  boxElement.style.width = `${width}px`;
+  boxElement.style.height = `${height}px`;
+  boxElement.style.top = `${placement.top}px`;
+  boxElement.style.left = `${placement.left}px`;
 
   let randomColor;
   if (colorMap[`${width}-${height}`]) {
@@ -278,10 +279,10 @@ result.placements.forEach((placement) => {
   }
 
   boxElement.style.backgroundColor = randomColor;
-  boxElement.style.display = "flex";
-  boxElement.style.justifyContent = "center";
-  boxElement.style.alignItems = "center";
-  boxElement.innerHTML = placement.index;
+
+  boxElement.innerHTML = placement.initialOrder;
 
   container.appendChild(boxElement);
 });
+
+console.log(result);
